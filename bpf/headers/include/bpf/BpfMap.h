@@ -48,9 +48,8 @@ using base::ResultError;
 using base::unique_fd;
 using std::function;
 
-[[noreturn]] __attribute__((__format__(__printf__, 2, 3))) static inline
+__attribute__((__format__(__printf__, 2, 3))) static inline
 void Abort(int __unused error, const char* __unused fmt, ...) {
-#ifdef BPFMAP_VERBOSE_ABORT
     va_list va;
     va_start(va, fmt);
 
@@ -61,9 +60,6 @@ void Abort(int __unused error, const char* __unused fmt, ...) {
     fflush(stderr);
 
     va_end(va);
-#endif
-
-    abort();
 }
 
 // We care about enabling SSO on 64-bit platforms
@@ -129,9 +125,20 @@ class BpfMapRO {
     }
 
   public:
+    bool isOk(bool writable = false) const {
+        if (!mMapFd.ok()) return false;
+        if (isAtLeastKernelVersion(4, 14, 0)) {
+            int flags = bpfGetFdMapFlags(mMapFd);
+            if (flags < 0) return false;
+            if (flags & BPF_F_WRONLY) return false;
+            if (writable && (flags & BPF_F_RDONLY)) return false;
+            if (bpfGetFdKeySize(mMapFd) != sizeof(Key)) return false;
+            if (bpfGetFdValueSize(mMapFd) != sizeof(Value)) return false;
+        }
+        return true;
+    }
     explicit BpfMapRO<Key, Value>(const char* pathname) {
         mMapFd.reset(mapRetrieveRO(pathname));
-        abortOnMismatch(/* writable */ false);
     }
 
     Result<Key> getFirstKey() const {

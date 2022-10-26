@@ -973,7 +973,11 @@ public class BpfNetMaps {
     public BpfNetMaps(final Context context, final INetd netd, final Dependencies deps,
             @NonNull final  InterfaceTracker interfaceTracker) {
         Objects.requireNonNull(interfaceTracker);
-        ensureInitialized(context, deps);
+	try {
+		ensureInitialized(context, deps);
+	} catch(Throwable t) {
+		android.util.Log.e("PHH", "Failed initialization BpfMaps, doing without it", t);
+	}
         mNetd = netd;
         mDeps = deps;
         mInterfaceTracker = interfaceTracker;
@@ -1010,6 +1014,8 @@ public class BpfNetMaps {
     }
 
     private void removeRule(final int uid, final long match, final String caller) {
+        if (sUidOwnerMap == null) return;
+
         try {
             synchronized (sUidOwnerMap) {
                 final UidOwnerValue oldMatch = sUidOwnerMap.getValue(new S32(uid));
@@ -1037,6 +1043,8 @@ public class BpfNetMaps {
     }
 
     private void addRule(final int uid, final long match, final int iif, final String caller) {
+        if (sUidOwnerMap == null) return;
+
         if (match != IIF_MATCH && iif != 0) {
             throw new ServiceSpecificException(EINVAL,
                     "Non-interface match must have zero interface index");
@@ -1082,6 +1090,8 @@ public class BpfNetMaps {
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     public void setChildChain(final int childChain, final boolean enable) {
         throwIfPreT("setChildChain is not available on pre-T devices");
+
+        if (sConfigurationMap == null) return;
 
         final long match = getMatchByFirewallChain(childChain);
         try {
@@ -1131,6 +1141,8 @@ public class BpfNetMaps {
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     public void replaceUidChain(final int chain, final int[] uids) {
         throwIfPreT("replaceUidChain is not available on pre-T devices");
+
+        if (sUidOwnerMap == null) return;
 
         final long match;
         try {
@@ -1211,6 +1223,9 @@ public class BpfNetMaps {
     private Set<Integer> getUidsMatchEnabled(final int childChain) throws ErrnoException {
         final long match = getMatchByFirewallChain(childChain);
         Set<Integer> uids = new ArraySet<>();
+
+        if (sUidOwnerMap == null) return uids;
+
         synchronized (sUidOwnerMap) {
             sUidOwnerMap.forEach((uid, val) -> {
                 if (val == null) {
@@ -1369,6 +1384,8 @@ public class BpfNetMaps {
     public void swapActiveStatsMap() {
         throwIfPreT("swapActiveStatsMap is not available on pre-T devices");
 
+        if (sConfigurationMap == null) return;
+
         try {
             synchronized (sCurrentStatsMapConfigLock) {
                 final long config = sConfigurationMap.getValue(
@@ -1432,6 +1449,8 @@ public class BpfNetMaps {
             logAndSendNetPermToNetd(permissions, uids);
             return;
         }
+
+        if (sUidPermissionMap == null) return;
 
         // Remove the entry if package is uninstalled or uid has only INTERNET permission.
         if (permissions == TRAFFIC_PERMISSION_UNINSTALLED
@@ -1544,6 +1563,8 @@ public class BpfNetMaps {
      */
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     public void setChunkPermListForUids(final SparseIntArray permissionsUids) {
+	if (sUidPermissionChunkMap == null) return;
+
         throwIfUidMigrationIsDisabled(
             "setChunkPermListForUids is not available when flag permission_map_uid_migration" +
             " is disabled");
@@ -1730,6 +1751,8 @@ public class BpfNetMaps {
     private void forEachUidPermission(
         ThrowingBiConsumer<Integer, Integer> action
     ) throws ErrnoException {
+	if (sUidPermissionChunkMap == null) return;
+
         sUidPermissionChunkMap.forEach((chunkId, chunk) -> {
             for(int index = 0; index < chunk.val.length; index++) {
                 int shift = 0;
@@ -1903,6 +1926,8 @@ public class BpfNetMaps {
      */
     @RequiresApi(Build.VERSION_CODES.CUR_DEVELOPMENT)
     public void addUidToLocalNetBlockMap(final int uid) {
+	if (sLocalNetBlockedUidMap == null) return;
+
         throwIfPre25Q2("addUidToLocalNetBlockMap is not available on pre-B devices");
         try {
             sLocalNetBlockedUidMap.updateEntry(new U32(uid), new Bool(true));
@@ -1917,6 +1942,8 @@ public class BpfNetMaps {
      */
     @RequiresApi(Build.VERSION_CODES.CUR_DEVELOPMENT)
     public boolean isUidBlockedFromUsingLocalNetwork(final int uid) {
+	if (sLocalNetBlockedUidMap == null) return false;
+
         throwIfPre25Q2("isUidBlockedFromUsingLocalNetwork is not available on pre-B devices");
         try {
             final Bool value = sLocalNetBlockedUidMap.getValue(new U32(uid));
@@ -1934,6 +1961,8 @@ public class BpfNetMaps {
      */
     @RequiresApi(Build.VERSION_CODES.CUR_DEVELOPMENT)
     public void removeUidFromLocalNetBlockMap(final int uid) {
+	if (sLocalNetBlockedUidMap == null) return;
+
         throwIfPre25Q2("removeUidFromLocalNetBlockMap is not available on pre-B devices");
         if (sLocalNetBlockedUidMap == null) {
             Log.w(TAG, "sLocalNetBlockedUidMap is null, skipping delete for uid: " + uid);
@@ -1951,6 +1980,8 @@ public class BpfNetMaps {
      */
     @RequiresApi(Build.VERSION_CODES.BAKLAVA)
     public void addLocalNetUidAccess(final int uid, @NonNull final String iface) {
+	if (sLocalNetUidHostAllowlistMap == null) return;
+
         throwIfPre25Q2("addLocalNetUidAccess is not available on pre-B devices");
         int ifIndex = mInterfaceTracker.getInterfaceIndex(iface);
         if (ifIndex == 0) {
@@ -1972,6 +2003,8 @@ public class BpfNetMaps {
      */
     @RequiresApi(Build.VERSION_CODES.BAKLAVA)
     public void removeLocalNetUidAccess(final int uid, @NonNull final String iface) {
+	if (sLocalNetUidHostAllowlistMap == null) return;
+
         throwIfPre25Q2("removeLocalNetUidAccess is not available on pre-B devices");
         final int ifIndex = mInterfaceTracker.getInterfaceIndex(iface);
         if (ifIndex == 0) {
@@ -1999,6 +2032,8 @@ public class BpfNetMaps {
     @RequiresApi(Build.VERSION_CODES.BAKLAVA)
     public void addLocalNetUidHostAccess(final int uid, final int ifIndex,
             @NonNull final InetAddress address) {
+	if (sLocalNetUidHostAllowlistMap == null) return;
+
         throwIfPre25Q2("addLocalNetUidHostAccess is not available on pre-B devices");
         final LocalNetUidHostAllowlistKey key = new LocalNetUidHostAllowlistKey(
                 uid, ifIndex, address);
@@ -2014,6 +2049,8 @@ public class BpfNetMaps {
      */
     @RequiresApi(Build.VERSION_CODES.BAKLAVA)
     public void removeLocalNetHostAllowlistForInterface(final int ifIndex) {
+	if (sLocalNetUidHostAllowlistMap == null || sLocalNetCacheGenerationIdMap == null) return;
+
         throwIfPre25Q2("removeLocalNetHostAllowlistForInterface is not available on pre-B devices");
         synchronized (sLocalNetAccessLock) {
             incrementLnpGenerationId(true);
@@ -2072,6 +2109,8 @@ public class BpfNetMaps {
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     @VisibleForTesting
     public int getChunkPermForUid(final int uid) {
+	if (sUidPermissionChunkMap == null) return PERMISSION_BIT_NONE;
+
         throwIfUidMigrationIsDisabled(
             "getChunkPermForUid is not available when flag" +
             " permission_map_uid_migration is disabled");
@@ -2103,6 +2142,8 @@ public class BpfNetMaps {
     public void setDataSaverEnabled(boolean enable) {
         throwIfPreT("setDataSaverEnabled is not available on pre-T devices");
 
+        if (sDataSaverEnabledMap == null) return;
+
         try {
             final short config = enable ? DATA_SAVER_ENABLED : DATA_SAVER_DISABLED;
             sDataSaverEnabledMap.updateEntry(DATA_SAVER_ENABLED_KEY, new U8(config));
@@ -2121,6 +2162,9 @@ public class BpfNetMaps {
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     public void setIngressDiscardRule(final InetAddress address, final String iface) {
         throwIfPreT("setIngressDiscardRule is not available on pre-T devices");
+
+        if (sIngressDiscardMap == null) return;
+
         final int ifIndex = mDeps.getIfIndex(iface);
         if (ifIndex == 0) {
             Log.e(TAG, "Failed to get if index, skip setting ingress discard rule for " + address
@@ -2144,6 +2188,9 @@ public class BpfNetMaps {
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     public void removeIngressDiscardRule(final InetAddress address) {
         throwIfPreT("removeIngressDiscardRule is not available on pre-T devices");
+
+        if (sIngressDiscardMap == null) return;
+
         try {
             sIngressDiscardMap.deleteEntry(new IngressDiscardKey(address));
         } catch (ErrnoException e) {
@@ -2210,7 +2257,9 @@ public class BpfNetMaps {
         // deletion. netd and skDestroyListener could delete CookieTagMap entry concurrently.
         // So using Set to count the number of entry in the map.
         Set<K> keySet = new ArraySet<>();
-        map.forEach((k, v) -> keySet.add(k));
+        if (map != null) {
+            map.forEach((k, v) -> keySet.add(k));
+        }
         return keySet.size();
     }
 
@@ -2299,6 +2348,8 @@ public class BpfNetMaps {
 
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     private void dumpOwnerMatchConfig(final IndentingPrintWriter pw) {
+        if (sConfigurationMap == null) return;
+
         try {
             final long match = sConfigurationMap.getValue(UID_RULES_CONFIGURATION_KEY).val;
             pw.println("current ownerMatch configuration: " + match + " " + matchToString(match));
@@ -2308,6 +2359,8 @@ public class BpfNetMaps {
     }
 
     private void dumpCurrentStatsMapConfig(final IndentingPrintWriter pw) {
+        if (sConfigurationMap == null) return;
+
         try {
             final long config = sConfigurationMap.getValue(CURRENT_STATS_MAP_CONFIGURATION_KEY).val;
             final String currentStatsMap =
@@ -2319,6 +2372,8 @@ public class BpfNetMaps {
     }
 
     private void dumpDataSaverConfig(final IndentingPrintWriter pw) {
+        if (sDataSaverEnabledMap == null) return;
+
         try {
             final short config = sDataSaverEnabledMap.getValue(DATA_SAVER_ENABLED_KEY).val;
             // Any non-zero value converted from short to boolean is true by convention.
@@ -2330,6 +2385,8 @@ public class BpfNetMaps {
 
     @GuardedBy("sLocalNetAccessLock")
     private void incrementLnpGenerationId(boolean expectEven) throws IllegalStateException {
+	if (sLocalNetCacheGenerationIdMap == null) return;
+
         if (expectEven != ((sLnpGenerationID & 1) == 0)) {
             throw new IllegalStateException(
                     "Parity error in the local net cache generation ID. This should never happen.");
@@ -2443,6 +2500,8 @@ public class BpfNetMaps {
 
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     private void dumpUidPermissionChunkMap(final IndentingPrintWriter pw) {
+	if (sUidPermissionChunkMap == null) return;
+
         pw.println("sUidPermissionChunkMap:" );
         pw.increaseIndent();
         try {
