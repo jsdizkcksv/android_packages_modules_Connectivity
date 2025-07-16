@@ -1324,10 +1324,21 @@ public class PermissionMonitor {
         }
 
         if (isAtLeastB() && !mBpfNetMaps.isPermissionPropagationEnabled()) {
-            mBpfNetMaps.removeUidFromLocalNetBlockMap(uid);
-            if (hasSdkSandbox(uid)) mBpfNetMaps.removeUidFromLocalNetBlockMap(
-                    Process.toSdkSandboxUid(uid));
-        }
+		try {
+			mBpfNetMaps.removeUidFromLocalNetBlockMap(uid);
+		} catch (NullPointerException e) {
+			Log.w(TAG, "BpfNetMaps.removeUidFromLocalNetBlockMap failed for UID " + uid + ": map is null");
+		}
+
+		try {
+			if (hasSdkSandbox(uid)) {
+				mBpfNetMaps.removeUidFromLocalNetBlockMap(
+                                       Process.toSdkSandboxUid(uid));
+			}
+		} catch (NullPointerException e) {
+			Log.w(TAG, "BpfNetMaps.removeUidFromLocalNetBlockMap failed for sandbox UID: map is null");
+		}
+	}
 
         // If the newly-removed package falls within some VPN's uid range, update Netd with it.
         // This needs to happen before the mUidToNetworkPerm update below, since
